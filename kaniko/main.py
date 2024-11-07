@@ -16,26 +16,17 @@ Global Options:
     --version                       Show script version.
 
 Commands:
-    builder                         Run image building with Kaniko.
-
-Builder Command Options:
-    --compose-file=<file>           Path to the docker-compose.yml file. [default: docker-compose.yml]
-    --kaniko-image=<image>          Kaniko executor image to use for building. [default: gcr.io/kaniko-project/executor:latest]
-    --push, -p                      Push the built images to a registry.
-    --deploy, -d                    Deploy images to the registry after building.
-    --dry-run, --dry                Run in test mode: build images without pushing, with cleanup.
-    --version, -v                   Show script version.
-    --help, -h                      Show documentation for the script and builder command.
+    build                       Run image building with Kaniko.
 
 Examples:
     1. Build and push images with default settings:
-       kaniko builder --push
+       kaniko build --push
 
     2. Build using a custom docker-compose file and Kaniko image:
-       kaniko builder --compose-file=custom-compose.yml --kaniko-image=my-kaniko-image
+       kaniko build --compose-file=custom-compose.yml --kaniko-image=my-kaniko-image
 
     3. Test build without pushing to registry:
-       kaniko builder --dry-run
+       kaniko build --dry-run
 """
 
 import json
@@ -46,8 +37,9 @@ import typing as t
 import docopt
 import dotenv
 
-from kaniko import command, settings, helpers
+from kaniko import settings, helpers, commands
 from kaniko.helpers.logger_file import LoggerEngine
+from kaniko.helpers.version import show_version
 
 logger_engine = LoggerEngine("KanikoBuilder", logging.INFO)
 logger = logger_engine.logger
@@ -58,8 +50,8 @@ settings.PACKAGE_VERSION = PACKAGE_VERSION = helpers
 def run_command(opts: t.Dict[str, t.Any]):
     command_name = opts["<command>"]
     match command_name:
-        case "builder":
-            cmd_module: types.ModuleType = command.kaniko_builder
+        case "build":
+            cmd_module: types.ModuleType = commands.build
         case _:
             raise ValueError(f"Unknown command: {command_name}")
 
@@ -77,8 +69,12 @@ def run_command(opts: t.Dict[str, t.Any]):
 
 
 def main(opts: t.Dict[str, t.Any]):
-
     logger.debug("Run app with options: %s", json.dumps(opts))
+
+    # Show version if --version flag is passed
+    if opts["--version"]:
+        show_version()
+        return
 
     for path in opts["--allow-dotenv"]:
         dotenv.load_dotenv(path)
