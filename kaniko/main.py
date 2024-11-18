@@ -37,12 +37,13 @@ import typing as t
 import docopt
 import dotenv
 
+from kaniko.helpers.logger_file import configure_logging, VerbosityLevel
 from kaniko import settings, helpers, commands
-from kaniko.helpers.logger_file import LoggerEngine
 from kaniko.helpers.version import show_version
 
-logger_engine = LoggerEngine("KanikoBuilder", logging.INFO)
-logger = logger_engine.logger
+
+configure_logging(VerbosityLevel.NORMAL)
+logger = logging.getLogger("KanikoBuilder")
 
 settings.PACKAGE_VERSION = PACKAGE_VERSION = helpers
 
@@ -71,18 +72,18 @@ def run_command(opts: t.Dict[str, t.Any]):
 def main(opts: t.Dict[str, t.Any]):
     logger.debug("Run app with options: %s", json.dumps(opts))
 
-    # Show version if --version flag is passed
     if opts["--version"]:
         show_version()
         return
 
     for path in opts["--allow-dotenv"]:
+        logger.info(f"Loading environment variables from {path}")
         dotenv.load_dotenv(path)
 
     try:
         run_command(opts)
     except Exception as e:
-        logger.error(f"An error occurred: {str(e)}")
+        logger.error(f"An error occurred: {str(e)}", exc_info=True)
         exit(1)
 
 
