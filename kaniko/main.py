@@ -39,11 +39,8 @@ import dotenv
 
 from kaniko.helpers.logger_file import configure_logging, VerbosityLevel
 from kaniko import settings, helpers, commands
-from kaniko.helpers.version import show_version
 
-
-configure_logging(VerbosityLevel.NORMAL)
-logger = logging.getLogger("KanikoBuilder")
+logger = logging.getLogger(__name__)
 
 settings.PACKAGE_VERSION = PACKAGE_VERSION = helpers
 
@@ -70,11 +67,9 @@ def run_command(opts: t.Dict[str, t.Any]):
 
 
 def main(opts: t.Dict[str, t.Any]):
-    logger.debug("Run app with options: %s", json.dumps(opts))
+    helpers.logger_file.configure_logging(verbosity=VerbosityLevel.NORMAL)
 
-    if opts["--version"]:
-        show_version()
-        return
+    logger.debug("Run app with options: %s", json.dumps(opts))
 
     for path in opts["--allow-dotenv"]:
         logger.info(f"Loading environment variables from {path}")
@@ -88,4 +83,10 @@ def main(opts: t.Dict[str, t.Any]):
 
 
 if __name__ == "__main__":
-    main(docopt.docopt(__doc__, options_first=True))
+    main(
+        docopt.docopt(
+            __doc__,
+            options_first=True,
+            version=PACKAGE_VERSION,
+        )
+    )

@@ -1,7 +1,5 @@
 import logging
-import unittest
 from unittest import mock
-from unittest.mock import patch
 
 from kaniko.commands.build.cmd import run
 from kaniko.helpers.logger_file import VerbosityLevel

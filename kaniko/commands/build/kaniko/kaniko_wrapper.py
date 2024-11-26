@@ -9,11 +9,8 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from kaniko.helpers.castom_exeption import FailedBuild
 
-SCRIPT_VERSION = "1.1.0.0"
-
 load_dotenv()
 
-# Set up logging
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     level=logging.INFO,
@@ -23,18 +20,16 @@ logger = logging.getLogger("KanikoBuilder")
 
 def load_compose_file(file_path: str) -> t.Dict:
     """Load and return the docker-compose file as a dictionary."""
+    if not file_path.strip():
+        logger.error("The file path is empty. Please provide a valid path.")
     try:
         logger.info(f"Loading docker-compose file: {file_path}")
         with open(file_path, "r") as file:
             return yaml.safe_load(file)
     except FileNotFoundError:
-        logger.error(
-            f"File not found: {file_path}. Please check the path and try again."
-        )
-        sys.exit(1)
+        raise FileNotFoundError(f"File not found: {file_path}")
     except yaml.YAMLError as e:
-        logger.error(f"YAML parsing error in {file_path}: {e}")
-        sys.exit(1)
+        raise Exception(f"YAML parsing error in {file_path}: {e}")
 
 
 def build_with_kaniko(
@@ -42,16 +37,33 @@ def build_with_kaniko(
     build_context: str,
     dockerfile: str,
     image_name: str,
-    build_args: t.Dict,
+    build_args: t.Dict[str, str],
     kaniko_image: str,
     deploy: bool,
     dry: bool,
-):
-    """Build the image using Kaniko."""
+) -> None:
     logger.info(f"Starting build for service: {service_name}")
     logger.debug(f"Build context: {build_context}, Dockerfile: {dockerfile}")
+    try:
+        kaniko_command = _construct_kaniko_command(
+            build_context, dockerfile, image_name, build_args, kaniko_image, deploy, dry
+        )
+        logger.debug(f"Kaniko command: {' '.join(kaniko_command)}")
+        _execute_kaniko_command(service_name, kaniko_command)
+    except Exception as e:
+        logger.error(f"Unexpected error while building {service_name}: {e}")
+        raise FailedBuild(f"Failed to build due to unexpected error: {e}")
 
-    # Construct Kaniko command
+
+def _construct_kaniko_command(
+    build_context: str,
+    dockerfile: str,
+    image_name: str,
+    build_args: t.Dict[str, str],
+    kaniko_image: str,
+    deploy: bool,
+    dry: bool,
+) -> t.List[str]:
     kaniko_command = [
         "docker",
         "run",
@@ -78,28 +90,31 @@ def build_with_kaniko(
     for arg_name, arg_value in build_args.items():
         kaniko_command.extend(["--build-arg", f"{arg_name}={arg_value}"])
 
-    logger.debug(f"Kaniko command: {' '.join(kaniko_command)}")
+    return kaniko_command
 
+
+def _execute_kaniko_command(service_name: str, kaniko_command: t.List[str]) -> None:
     try:
         process = subprocess.Popen(
             kaniko_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
-
-        # Log output
-        for line in process.stdout:
-            logger.info(f"[Kaniko] {line.strip()}")
+        for stdout_line in iter(process.stdout.readline, ""):
+            logger.info(f"[Kaniko] {stdout_line.strip()}")
+        for stderr_line in iter(process.stderr.readline, ""):
+            logger.warning(f"[Kaniko Warning] {stderr_line.strip()}")
 
         process.wait()
 
-        if process.returncode == 0:
-            logger.info(f"Successfully built service: {service_name}")
+        if process.returncode != 0:
+            logger.error(f"Kaniko build failed for service: {service_name}")
+            raise FailedBuild(f"Kaniko build failed for service: {service_name}")
         else:
-            for line in process.stderr:
-                logger.error(f"[Kaniko Error] {line.strip()}")
-            raise FailedBuild(f"Failed to build service: {service_name}")
-    except Exception as e:
-        logger.error(f"Unexpected error while building {service_name}: {e}")
-        raise
+            logger.info(f"Successfully built service: {service_name}")
+    finally:
+        if process.stdout:
+            process.stdout.close()
+        if process.stderr:
+            process.stderr.close()
 
 
 def builder(opts: t.Dict[str, t.Any]):
