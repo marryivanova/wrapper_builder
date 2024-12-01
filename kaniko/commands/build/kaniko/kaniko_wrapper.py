@@ -4,12 +4,10 @@ import yaml
 import subprocess
 import typing as t
 import logging
-from dotenv import load_dotenv
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from kaniko.helpers.castom_exeption import FailedBuild
 
-load_dotenv()
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -22,6 +20,7 @@ def load_compose_file(file_path: str) -> t.Dict:
     """Load and return the docker-compose file as a dictionary."""
     if not file_path.strip():
         logger.error("The file path is empty. Please provide a valid path.")
+        raise ValueError("The file path cannot be empty.")
     try:
         logger.info(f"Loading docker-compose file: {file_path}")
         with open(file_path, "r") as file:

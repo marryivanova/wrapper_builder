@@ -13,6 +13,7 @@ Usage:
 Global Options:
     -e, --allow-dotenv <path>       Load environment variables from the specified file. [default: .env]
     -h, --help                      Show usage help.
+    -v                              Make log.
     --version                       Show script version.
 
 Commands:
@@ -67,6 +68,9 @@ def run_command(opts: t.Dict[str, t.Any]):
 
 
 def main(opts: t.Dict[str, t.Any]):
+    helpers.logger_file.configure_logging(
+        helpers.logger_file.VerbosityLevel.from_opts(opts)
+    )
     helpers.logger_file.configure_logging(verbosity=VerbosityLevel.NORMAL)
 
     logger.debug("Run app with options: %s", json.dumps(opts))

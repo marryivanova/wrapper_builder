@@ -9,10 +9,33 @@ IMPORTANT_LOGGERS = ["important_logger"]
 
 
 class VerbosityLevel(enum.IntEnum):
-    QUIET = 0
-    NORMAL = 1
-    VERBOSE = 2
-    VERY_VERBOSE = 3
+    QUIET = -1
+    NORMAL = 0
+    VERBOSE = 1
+    VERY_VERBOSE = 2
+    DEBUG = 3
+
+    MAX = DEBUG
+
+    @classmethod
+    def from_opts(cls, opts: dict):
+        def get_v_string(v: int) -> str:
+            return "-" + "v" * v
+
+        if opts.get("--quiet"):
+            return cls.QUIET
+
+        verbosity_level = opts.get("-v", 0)
+        if verbosity_level > cls.MAX:
+            current_verbosity_option, max_verbosity_option = get_v_string(
+                verbosity_level
+            ), get_v_string(cls.MAX)
+            logging.error(
+                f"Invalid verbosity option. Current verbosity option: {current_verbosity_option}, max verbosity option: {max_verbosity_option}"
+            )
+            return cls.QUIET
+
+        return cls(verbosity_level)
 
 
 class LogSeverity(enum.IntEnum):
@@ -49,11 +72,16 @@ def configure_logging(verbosity: VerbosityLevel) -> None:
             if name in logger_names
         ]
         for logger in loggers:
+            # Add the console handler if it doesn't already exist
             if not any(
                 isinstance(handler, logging.StreamHandler)
                 for handler in logger.handlers
             ):
+                console_handler = logging.StreamHandler()
+                console_handler.setFormatter(logging.Formatter(DEFAULT_LOG_FORMAT))
                 logger.addHandler(console_handler)
+
+            # Set the logger level based on severity
             logger.setLevel(severity)
         return loggers
 
@@ -61,21 +89,19 @@ def configure_logging(verbosity: VerbosityLevel) -> None:
         logging.disable(logging.CRITICAL)
         return
 
-    # Configure console handler
-    console_formatter = logging.Formatter(DEFAULT_LOG_FORMAT)
+    # Configure console handler (this is a common handler)
     console_handler = logging.StreamHandler()
-    console_handler.setFormatter(console_formatter)
+    console_handler.setFormatter(logging.Formatter(DEFAULT_LOG_FORMAT))
     console_handler.setLevel(
         logging.DEBUG if verbosity >= VerbosityLevel.VERBOSE else logging.INFO
     )
 
-    # Apply logging configurations
+    # Apply logging configurations to core and important loggers
     add_handlers_to_loggers(CORE_LOGGERS, LogSeverity.from_verbosity(verbosity, "core"))
     add_handlers_to_loggers(
         IMPORTANT_LOGGERS, LogSeverity.from_verbosity(verbosity, "important")
     )
 
-    # Configure other loggers
     other_logger_names = [
         name
         for name in logging.root.manager.loggerDict.keys()
@@ -84,3 +110,9 @@ def configure_logging(verbosity: VerbosityLevel) -> None:
     add_handlers_to_loggers(
         other_logger_names, LogSeverity.from_verbosity(verbosity, "general")
     )
+
+
+def _configure_logging() -> logging.Logger:
+    configure_logging(verbosity=VerbosityLevel.NORMAL)
+    logger = logging.getLogger("KanikoBuilder")
+    return logger

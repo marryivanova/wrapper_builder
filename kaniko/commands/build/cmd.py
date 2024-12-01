@@ -10,22 +10,15 @@ Options:
   --push, -p                      Push the built images to a registry.
   --deploy, -d                    Deploy images to the registry after building.
   --dry-run, --dry                Run in test mode: build images without pushing, with cleanup.
-  --version, -v                   Show script version.
   -h --help                       Show this help message and exit.
 """
 
 import logging
+import subprocess
 import typing as t
-
 from kaniko import helpers
 from kaniko.helpers.logger_file import VerbosityLevel
 from kaniko.settings import SCRIPT_VERSION
-
-
-def configure_logging() -> logging.Logger:
-    """Configure and return a logger instance."""
-    helpers.logger_file.configure_logging(verbosity=VerbosityLevel.NORMAL)
-    return logging.getLogger("KanikoComposeWrapper")
 
 
 def parse_options(opts: t.Dict[str, t.Any]) -> t.Dict[str, t.Any]:
@@ -78,7 +71,7 @@ def log_build_details(opts: t.Dict[str, t.Any], logger: logging.Logger) -> None:
 
 
 def run_build(opts: t.Dict[str, t.Any], logger: logging.Logger) -> None:
-    """Simulate the Kaniko build process."""
+    """Simulate the Kaniko build process and trigger it using subprocess."""
     logger.debug(
         "\n⚙️ Preparing Kaniko build with options...\n"
         f"compose_file: {opts['compose_file']}, \n"
@@ -87,13 +80,42 @@ def run_build(opts: t.Dict[str, t.Any], logger: logging.Logger) -> None:
         f"deploy: {opts['deploy']}, \n"
         f"dry_run: {opts['dry_run']}.\n"
     )
-    logger.info("⚙️ Kaniko build process is now running... (details not implemented).")
-    logger.info("✅ Kaniko build process completed successfully!")
+
+    command = [
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        f"{opts['compose_file']}:/workspace",
+        opts["kaniko_image"],
+        "--context",
+        "/workspace",
+        "--dockerfile",
+        "/workspace/Dockerfile",
+    ]
+
+    if opts["push"]:
+        command.extend(["--destination", "your-registry/your-image:latest"])
+    elif opts["deploy"]:
+        command.extend(["--destination", "your-registry/your-image:latest", "--deploy"])
+
+    if opts["dry_run"]:
+        logger.info("🔍 Running in dry-run mode. No images will be pushed.")
+        return
+
+    try:
+        logger.info("⚙️ Kaniko build process is now running...")
+        subprocess.run(command, check=True)
+        logger.info("✅ Kaniko build process completed successfully!")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"❌ Kaniko build failed with error: {e}")
+        return
 
 
 def run(opts: t.Dict[str, t.Any]) -> None:
-    """Main entry point for the script."""
-    logger = configure_logging()
+    helpers.logger_file.configure_logging(verbosity=VerbosityLevel.NORMAL)
+    logger = logging.getLogger("KanikoComposeWrapper")
+
     options = parse_options(opts)
 
     if options["version"]:
