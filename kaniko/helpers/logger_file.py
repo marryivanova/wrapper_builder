@@ -1,7 +1,6 @@
-import logging
 import enum
-from typing import List, Literal
-
+import logging
+from typing import Literal
 
 DEFAULT_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 CORE_LOGGERS = ["core_logger"]
@@ -62,57 +61,34 @@ class LogSeverity(enum.IntEnum):
         return cls.DEBUG
 
 
-def configure_logging(verbosity: VerbosityLevel) -> None:
-    def add_handlers_to_loggers(
-        logger_names: List[str], severity: int
-    ) -> List[logging.Logger]:
-        loggers = [
-            logging.getLogger(name)
-            for name in logging.root.manager.loggerDict.keys()
-            if name in logger_names
-        ]
-        for logger in loggers:
-            # Add the console handler if it doesn't already exist
-            if not any(
-                isinstance(handler, logging.StreamHandler)
-                for handler in logger.handlers
-            ):
-                console_handler = logging.StreamHandler()
-                console_handler.setFormatter(logging.Formatter(DEFAULT_LOG_FORMAT))
-                logger.addHandler(console_handler)
-
-            # Set the logger level based on severity
-            logger.setLevel(severity)
-        return loggers
-
-    if verbosity == VerbosityLevel.QUIET:
-        logging.disable(logging.CRITICAL)
-        return
-
-    # Configure console handler (this is a common handler)
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter(DEFAULT_LOG_FORMAT))
-    console_handler.setLevel(
-        logging.DEBUG if verbosity >= VerbosityLevel.VERBOSE else logging.INFO
-    )
-
-    # Apply logging configurations to core and important loggers
-    add_handlers_to_loggers(CORE_LOGGERS, LogSeverity.from_verbosity(verbosity, "core"))
-    add_handlers_to_loggers(
-        IMPORTANT_LOGGERS, LogSeverity.from_verbosity(verbosity, "important")
-    )
-
-    other_logger_names = [
-        name
-        for name in logging.root.manager.loggerDict.keys()
-        if name.split(".")[0] not in CORE_LOGGERS + IMPORTANT_LOGGERS
-    ]
-    add_handlers_to_loggers(
-        other_logger_names, LogSeverity.from_verbosity(verbosity, "general")
-    )
-
-
-def _configure_logging() -> logging.Logger:
-    configure_logging(verbosity=VerbosityLevel.NORMAL)
+def configure_logging(verbosity: VerbosityLevel) -> logging.Logger:
+    """Centralized logger configuration."""
     logger = logging.getLogger("KanikoBuilder")
+    if not logger.handlers:
+        logger.setLevel(LogSeverity.from_verbosity(verbosity, "general"))
+
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(logging.Formatter(DEFAULT_LOG_FORMAT))
+        console_handler.setLevel(LogSeverity.from_verbosity(verbosity, "general"))
+        logger.addHandler(console_handler)
+
     return logger
+
+
+KANIKO_LOGGER = None
+
+
+def get_logger(verbosity: VerbosityLevel = VerbosityLevel.NORMAL) -> logging.Logger:
+    """Retrieve the configured logger instance."""
+    global KANIKO_LOGGER
+    if KANIKO_LOGGER is None:
+        KANIKO_LOGGER = configure_logging(verbosity)
+    return KANIKO_LOGGER
+
+
+def _init_log():
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        level=logging.INFO,
+    )
+    logger = logging.getLogger("KanikoBuilder")

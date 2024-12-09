@@ -2,7 +2,7 @@ import logging
 import unittest
 from unittest.mock import patch
 
-from kaniko.commands.build.cmd import run_build, parse_options
+from kaniko.commands.build.cmd import parse_options, run_build
 
 
 class TestKanikoBuild(unittest.TestCase):

@@ -1,7 +1,61 @@
+import subprocess
 import unittest
 from unittest.mock import mock_open, patch
 
+from kaniko.commands.build.cmd import run_build
 from kaniko.commands.build.kaniko.kaniko_wrapper import load_compose_file
+
+
+class TestKanikoWrapper(unittest.TestCase):
+    @patch("subprocess.run")
+    def test_run_build_success(self, mock_run):
+        mock_run.return_value = None
+
+        opts = {
+            "compose_file": "docker-compose.yml",
+            "kaniko_image": "gcr.io/kaniko-project/executor:latest",
+            "push": True,
+            "deploy": False,
+            "dry_run": False,
+        }
+        logger = unittest.mock.MagicMock()
+        run_build(opts, logger)
+
+        mock_run.assert_called_once_with(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "-v",
+                "docker-compose.yml:/workspace",
+                "gcr.io/kaniko-project/executor:latest",
+                "--context",
+                "/workspace",
+                "--dockerfile",
+                "/workspace/Dockerfile",
+                "--destination",
+                "your-registry/your-image:latest",
+            ],
+            check=True,
+        )
+
+    @patch("subprocess.run")
+    def test_run_build_failure(self, mock_run):
+        mock_run.side_effect = subprocess.CalledProcessError(1, "docker run")
+
+        opts = {
+            "compose_file": "docker-compose.yml",
+            "kaniko_image": "gcr.io/kaniko-project/executor:latest",
+            "push": True,
+            "deploy": False,
+            "dry_run": False,
+        }
+        logger = unittest.mock.MagicMock()
+        run_build(opts, logger)
+
+        logger.error.assert_called_with(
+            "❌ Kaniko build failed with error: Command 'docker run' returned non-zero exit status 1."
+        )
 
 
 class TestLoadComposeFile(unittest.TestCase):

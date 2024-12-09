@@ -38,8 +38,8 @@ import typing as t
 import docopt
 import dotenv
 
-from kaniko.helpers.logger_file import configure_logging, VerbosityLevel
-from kaniko import settings, helpers, commands
+from kaniko import commands, helpers, settings
+from kaniko.helpers.logger_file import VerbosityLevel, configure_logging
 
 logger = logging.getLogger(__name__)
 

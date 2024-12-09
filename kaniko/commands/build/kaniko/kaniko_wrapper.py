@@ -3,17 +3,12 @@ import sys
 import yaml
 import subprocess
 import typing as t
-import logging
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from kaniko.helpers.logger_file import _init_log
 from kaniko.helpers.castom_exeption import FailedBuild
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-
-logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
-logger = logging.getLogger("KanikoBuilder")
+logger = _init_log()
 
 
 def load_compose_file(file_path: str) -> t.Dict:
