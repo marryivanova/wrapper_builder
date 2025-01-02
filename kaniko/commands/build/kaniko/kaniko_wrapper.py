@@ -1,177 +1,217 @@
 import os
-import sys
 import yaml
 import subprocess
 import typing as t
-from collections import defaultdict
-from kaniko.helpers.logger_file import _init_log
-from kaniko.helpers.castom_exeption import FailedBuild
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from kaniko.helpers.logger_file import _init_log
 
 logger = _init_log()
 
 
-def load_compose_file(file_path: str) -> t.Dict:
-    """Load and return the docker-compose file as a dictionary."""
-    if not file_path.strip():
-        logger.error("The file path is empty. Please provide a valid path.")
-        raise ValueError("The file path cannot be empty.")
-    try:
-        logger.info(f"Loading docker-compose file: {file_path}")
-        with open(file_path, "r") as file:
-            return yaml.safe_load(file)
-    except FileNotFoundError:
-        raise FileNotFoundError(f"File not found: {file_path}")
-    except yaml.YAMLError as e:
-        raise Exception(f"YAML parsing error in {file_path}: {e}")
+class DockerComposeLoader:
+
+    def __init__(self, compose_file: str):
+        self.compose_file = compose_file
+
+    def load(self) -> t.Dict[str, t.Dict]:
+        """
+        Load and validate the Docker Compose file.
+
+        This method attempts to load the specified Docker Compose file and extract
+        the 'services' section. If the file doesn't exist, it raises a FileNotFoundError.
+
+        Args:
+            self: The instance of the DockerComposeLoader class.
+
+        Returns:
+            t.Dict[str, t.Dict]: A dictionary containing the 'services' section of the
+            Docker Compose file. If no 'services' section is found, it returns an empty dictionary.
+
+        Raises:
+            FileNotFoundError: If the specified Docker Compose file does not exist.
+        """
+        if not os.path.exists(self.compose_file):
+            logger.error(f"Compose file not found: {self.compose_file}")
+            raise FileNotFoundError(f"Compose file not found: {self.compose_file}")
+
+        logger.info(f"Loading compose file: {self.compose_file}")
+        with open(self.compose_file, "r") as file:
+            data = yaml.safe_load(file)
+            return data.get("services", {})
 
 
-def build_with_kaniko(
-    service_name: str,
-    build_context: str,
-    dockerfile: str,
-    image_name: str,
-    build_args: t.Dict[str, str],
-    kaniko_image: str,
-    deploy: bool,
-    dry: bool,
-) -> None:
-    logger.info(f"Starting build for service: {service_name}")
-    logger.debug(f"Build context: {build_context}, Dockerfile: {dockerfile}")
-    try:
-        kaniko_command = _construct_kaniko_command(
-            build_context, dockerfile, image_name, build_args, kaniko_image, deploy, dry
-        )
-        logger.debug(f"Kaniko command: {' '.join(kaniko_command)}")
-        _execute_kaniko_command(service_name, kaniko_command)
-    except Exception as e:
-        logger.error(f"Unexpected error while building {service_name}: {e}")
-        raise FailedBuild(f"Failed to build due to unexpected error: {e}")
+class KanikoCommandBuilder:
+    def __init__(self, kaniko_image: str):
+        self.kaniko_image = kaniko_image
 
+    def build_command(
+        self,
+        context: str,
+        dockerfile: str,
+        image: str,
+        build_args: t.Dict[str, str],
+        push: bool,
+    ) -> t.List[str]:
+        """
+        Build a Kaniko command for building and optionally pushing a Docker image.
 
-def _construct_kaniko_command(
-    build_context: str,
-    dockerfile: str,
-    image_name: str,
-    build_args: t.Dict[str, str],
-    kaniko_image: str,
-    deploy: bool,
-    dry: bool,
-) -> t.List[str]:
-    kaniko_command = [
-        "docker",
-        "run",
-        "--rm",
-        "-v",
-        f"{os.path.abspath(build_context)}:/workspace",
-        "-v",
-        f'{os.path.expanduser("~")}/.docker:/kaniko/.docker:ro',
-        kaniko_image,
-        "--context",
-        "/workspace",
-        "--dockerfile",
-        f"/workspace/{dockerfile}",
-        "--snapshot-mode=redo",
-        "--cache=false",
-        "--cleanup",
-    ]
+        This method constructs a command list that can be used to run Kaniko
+        for building a Docker image based on the provided parameters.
 
-    if deploy:
-        kaniko_command.extend(["--destination", image_name])
-    elif dry:
-        kaniko_command.append("--no-push")
+        Args:
+            context (str): The build context path.
+            dockerfile (str): The path to the Dockerfile relative to the context.
+            image (str): The name and tag of the image to be built.
+            build_args (t.Dict[str, str]): A dictionary of build arguments to be passed to the build process.
+            push (bool): Whether to push the built image to a registry.
 
-    for arg_name, arg_value in build_args.items():
-        kaniko_command.extend(["--build-arg", f"{arg_name}={arg_value}"])
-
-    return kaniko_command
-
-
-def _execute_kaniko_command(service_name: str, kaniko_command: t.List[str]) -> None:
-    try:
-        process = subprocess.Popen(
-            kaniko_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        for stdout_line in iter(process.stdout.readline, ""):
-            logger.info(f"[Kaniko] {stdout_line.strip()}")
-        for stderr_line in iter(process.stderr.readline, ""):
-            logger.warning(f"[Kaniko Warning] {stderr_line.strip()}")
-
-        process.wait()
-
-        if process.returncode != 0:
-            logger.error(f"Kaniko build failed for service: {service_name}")
-            raise FailedBuild(f"Kaniko build failed for service: {service_name}")
+        Returns:
+            t.List[str]: A list of strings representing the Kaniko command to be executed.
+        """
+        command = [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            f"{os.path.abspath(context)}:/workspace",
+            "-v",
+            f"{os.path.expanduser('~')}/.docker:/kaniko/.docker:ro",
+            self.kaniko_image,
+            "--context",
+            "/workspace",
+            "--dockerfile",
+            f"/workspace/{dockerfile}",
+            "--snapshot-mode=redo",
+            "--cache=false",
+            "--cleanup",
+        ]
+        if push:
+            command.extend(["--destination", image])
         else:
-            logger.info(f"Successfully built service: {service_name}")
-    finally:
-        if process.stdout:
-            process.stdout.close()
-        if process.stderr:
-            process.stderr.close()
+            command.append("--no-push")
+
+        for arg, value in build_args.items():
+            command.extend(["--build-arg", f"{arg}={value}"])
+
+        return command
 
 
-def builder(opts: t.Dict[str, t.Any]):
-    """Main build function."""
-    compose_file = opts.get("--compose-file", "docker-compose.yml")
-    kaniko_image = opts.get("--kaniko-image", "gcr.io/kaniko-project/executor:latest")
-    deploy = opts.get("--push") or opts.get("--deploy")
-    dry = opts.get("--dry-run", False)
+class KanikoExecutor:
 
-    logger.info("Starting Kaniko build process...")
-    logger.debug(f"Options: {opts}")
+    def __init__(self, kaniko_image: str, push: bool, dry_run: bool):
+        """
+        Initialize the KanikoExecutor.
 
-    # Load the docker-compose file
-    compose_data = load_compose_file(compose_file)
-    services = compose_data.get("services", {})
+        Args:
+            kaniko_image (str): The Kaniko executor image to use.
+            push (bool): Whether to push the built image to a registry.
+            dry_run (bool): If True, only log the command without executing it.
+        """
+        self.kaniko_image = kaniko_image
+        self.push = push
+        self.dry_run = dry_run
 
-    # Check for duplicate image names
-    image_names = defaultdict(int)
-    for service_name, service_data in services.items():
-        image_name = service_data.get("image")
-        if image_name:
-            image_names[image_name] += 1
-        else:
-            logger.warning(f"Service '{service_name}' does not specify an image.")
+    def run_build(
+        self,
+        service_name: str,
+        context: str,
+        dockerfile: str,
+        image: str,
+        build_args: t.Dict[str, str],
+    ):
+        """
+        Execute a Kaniko build for a given service.
 
-    for image_name, count in image_names.items():
-        if count > 1:
-            logger.error(
-                f"Duplicate image name detected: {image_name} used {count} times."
+        This method builds a Docker image using Kaniko based on the provided parameters.
+        If dry_run is True, it only logs the command without executing it.
+
+        Args:
+            service_name (str): The name of the service being built.
+            context (str): The build context path.
+            dockerfile (str): The path to the Dockerfile relative to the context.
+            image (str): The name and tag of the image to be built.
+            build_args (t.Dict[str, str]): A dictionary of build arguments to be passed to the build process.
+
+        Raises:
+            subprocess.CalledProcessError: If the Kaniko build process fails.
+
+        Returns:
+            None
+        """
+        command_builder = KanikoCommandBuilder(self.kaniko_image)
+        command = command_builder.build_command(
+            service_name, context, dockerfile, image, build_args, self.push
+        )
+
+        if self.dry_run:
+            logger.info(
+                f"[Dry-Run] Command for service {service_name}: {' '.join(command)}"
             )
-            sys.exit(1)
+            return
 
-    try:
-        # Build images in parallel
-        with ThreadPoolExecutor() as executor:
+        try:
+            logger.info(f"Building service: {service_name}")
+            subprocess.run(command, check=True)
+            logger.info(f"Service {service_name} built successfully.")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to build service {service_name}: {e}")
+            raise
+
+
+class KanikoBuilder:
+    """
+    A class for building Docker images using Kaniko based on a Docker Compose file.
+    """
+
+    def __init__(self, compose_file: str, kaniko_image: str, push: bool, dry_run: bool):
+        """
+        Initialize the KanikoBuilder.
+
+        Args:
+            compose_file (str): Path to the Docker Compose file.
+            kaniko_image (str): The Kaniko executor image to use for building.
+            push (bool): Whether to push the built images to a registry.
+            dry_run (bool): If True, only log the commands without executing them.
+        """
+        self.compose_file = compose_file
+        self.kaniko_image = kaniko_image
+        self.push = push
+        self.dry_run = dry_run
+
+    def execute(self):
+        """
+        Execute the Kaniko build process for all services defined in the Docker Compose file.
+
+        This method loads the services from the Docker Compose file, creates a KanikoExecutor,
+        and uses a ThreadPoolExecutor to build all services concurrently.
+
+        Raises:
+            Exception: If any error occurs during the build process for any service.
+
+        Returns:
+            None
+        """
+        loader = DockerComposeLoader(self.compose_file)
+        services = loader.load()
+        executor = KanikoExecutor(self.kaniko_image, self.push, self.dry_run)
+
+        with ThreadPoolExecutor() as pool:
             tasks = [
-                executor.submit(
-                    build_with_kaniko,
+                pool.submit(
+                    executor.run_build,
                     service_name,
-                    service_data.get("build", {}).get("context", "."),
-                    service_data.get("build", {}).get("dockerfile", "Dockerfile"),
-                    image_name,
-                    {
-                        key: os.getenv(key, value)
-                        for key, value in service_data.get("build", {})
-                        .get("args", {})
-                        .items()
-                    },
-                    kaniko_image,
-                    deploy,
-                    dry,
+                    service.get("build", {}).get("context", "."),
+                    service.get("build", {}).get("dockerfile", "Dockerfile"),
+                    service["image"],
+                    service.get("build", {}).get("args", {}),
                 )
-                for service_name, service_data in services.items()
-                if (image_name := service_data.get("image"))
+                for service_name, service in services.items()
+                if "image" in service
             ]
 
-            # Wait for all builds to finish
             for future in as_completed(tasks):
-                future.result()
-
-    except FailedBuild as exc:
-        logger.error(f"Build process failed: {exc}")
-        sys.exit(1)
-    except Exception as exc:
-        logger.critical(f"An unexpected error occurred: {exc}")
-        sys.exit(1)
+                try:
+                    future.result()
+                except Exception as e:
+                    logger.error(f"Error during build for service: {e}")
+                    raise
