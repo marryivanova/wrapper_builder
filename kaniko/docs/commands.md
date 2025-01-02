@@ -1,10 +1,9 @@
-# EpicMorg: Kaniko-Compose Wrapper
+## Все доступные команды
 
-## Description
+### Описание
 
-This script is designed to automate Docker image building using **Kaniko** and **docker-compose**. It supports testing, deployment, and publishing images to a registry.
-
-## Usage
+Этот скрипт предназначен для автоматизации создания образов Docker с помощью **Kaniko** и **docker-compose**. Он поддерживает тестирование, развертывание и публикацию образов в реестре.
+#### Usage
 
 ```bash
 kaniko [options...] <command> [<args>...]
@@ -13,75 +12,125 @@ kaniko (-h | --help | --version)
 
 #### Global Options:
 `-e, --allow-dotenv <path>`
-Load environment variables from the specified file.
+Загрузка переменных окружения из указанного файла.
 [default: .env]
 
-`-h, --help` - Show usage help.
+`-h, --help` - Показать справку по использованию.
 
-`--version` - Show the script version.
+`--version` - Показать версию скрипта.
 
 #### Commands:
 
-`build` - Run image building with Kaniko.
-
-#### Examples:
-1. Build and push images with default settings:
-```bash
-kaniko build --push
-```
-This will use the default docker-compose.yml and the Kaniko image gcr.io/kaniko-project/executor:latest. The built images will be pushed to the registry.
-
-2. Build using a custom docker-compose file and Kaniko image:
-```bash
-kaniko build --compose-file=custom-compose.yml --kaniko-image=my-kaniko-image
-```
-This command allows you to specify a custom docker-compose file and a Kaniko image for the build.
-
-3. Test build without pushing to the registry (Dry-run):
-```bash
-kaniko build --dry-run
-```
-This will run the build process without pushing the images to the registry. It is useful for testing the build process.
-
-#### Configuration
-```bash
-.env file
-```
-You can specify environment variables for your builds via a .env file. If the --allow-dotenv option is used, the script will automatically load environment variables from this file.
-
-Example .env file: `MY_VAR=value`
-
-To use a custom dotenv file:
+1. Получить версию скрипта
+Для получения версии скрипта, выполните следующую команду:
 
 ```bash
-kaniko build --allow-dotenv custom.env
+poetry run kaniko build --version
 ```
-#### Error Handling
 
-1. Invalid command
-If you provide an unknown command, the script will raise an error:
+2. Вызов документации
+
+Если вам нужна помощь по использованию скрипта, выполните команду:
 
 ```bash
-Unknown command: <command>
+poetry run kaniko build -h
 ```
+- Эта команда выведет справочную информацию о доступных флагах и параметрах, а также краткое описание каждой команды.
 
-2. Missing docker-compose file
-If the `--compose-file` option is not provided and the file cannot be found, the script will display an error:
+3. Сборка и развертывание образов
+
+Для сборки Docker-образов и их последующего развертывания, используйте команду:
 
 ```bash
-Error: <file> not found
+poetry run kaniko build --compose-file C:/Users/../wrapper_builder --kaniko-image gcr.io/kaniko-project/executor:latest --deploy
 ```
-3. Kaniko image missing
-If the `--kaniko-image` option is missing or invalid, an error message will be shown:
+Пояснение:
+- compose-file: Путь к вашему файлу docker-compose.yml, который описывает сервисы и их параметры.
+- kaniko-image: Образ Kaniko для выполнения сборки.
+- deploy: После сборки образы будут развернуты в вашем облаке или на сервере.
+
+- Использование флага `--deploy`: Если вы хотите не просто собрать образы, а сразу развернуть их после сборки, используйте флаг `--deploy`. Это предполагает, что после сборки образы будут сразу развернуты в вашем облаке или на сервере. Убедитесь, что ваша среда настроена для развертывания (например, настроены правильные аутентификационные данные для облачных сервисов).
+
+4. Остановка и очистка после сборки.
+После завершения сборки и загрузки, чтобы остановить все контейнеры и освободить ресурсы, используйте команду:
 
 ```bash
-Error: Kaniko image is missing. Please provide a valid image with --kaniko-image.
+docker-compose down --rmi all
 ```
+Эта команда остановит контейнеры, удалит их и очистит ресурсы, связанные с ними.
 
-#### Version Management
-The version of the script can be checked using the --version option:
+5. Тестирование сборки (без загрузки)
+
+Если вы хотите только протестировать сборку без загрузки образов в реестр, используйте флаг --dry-run. Это позволит собрать образы, но не пытаться загрузить их в реестр.
+
+Пример команды для тестового запуска:
 
 ```bash
-kaniko --version
+poetry run kaniko build --compose-file C:/Users/./wrapper_builder --kaniko-image gcr.io/kaniko-project/executor:latest --dry-run
 ```
-This will print the version of the script, for example: `Kaniko Builder Version: 1.1.0.0`
+
+Пояснение:
+- dry-run — флаг, который позволяет выполнить сборку без попытки загрузить образы в реестр. Это полезно для тестирования процесса сборки без изменения состояния реестра.
+
+#### Примечания:
+По умолчанию скрипт будет использовать файл `docker-compose.yml` из текущего каталога. Если ваш файл расположен в другом месте, укажите его путь с помощью флага `--compose-file`.
+Kaniko будет использовать образ, указанный в параметре `--kaniko-image`. По умолчанию используется `gcr.io/kaniko-project/executor:latest`, но вы можете изменить это на другой образ Kaniko.
+Docker необходим для работы с реестрами Docker и для выполнения команд контейнеризации. Убедитесь, что Docker настроен правильно для вашего окружения.
+
+6. После успешной сборки образов они должны быть загружены (или "пушнуты") в реестр Docker:
+
+```bash
+poetry run kaniko build --compose-file C:/Users/../wrapper_builder --kaniko-image gcr.io/kaniko-project/executor:latest --push
+```
+
+Эта команда запускает сборку Docker-образов с использованием Kaniko, с указанием файла docker-compose.yml и дополнительными параметрами, которые контролируют процесс сборки и публикации образов в реестр Docker.
+
+- `kaniko build` - (`Kaniko` — это инструмент для сборки Docker-образов в Kubernetes или в средах, где нельзя использовать Docker (например, в контейнерах)). В данном случае, команда kaniko build говорит инструменту выполнить сборку Docker-образов.
+- `compose-file` — этот флаг указывает путь к файлу docker-compose.yml, который описывает конфигурацию ваших сервисов и контейнеров. В этом файле могут быть описаны такие параметры, как название образов, порты, тома и другие параметры, которые необходимы для создания и запуска Docker-контейнеров.
+- `kaniko-image` — указывает, какой образ Kaniko использовать для выполнения сборки. В данном случае используется официальный образ Kaniko из репозитория Google.
+- `push` — этот флаг указывает Kaniko, что после успешной сборки образов они должны быть загружены (или "пушнуты") в реестр Docker, например, Docker Hub или Google Container Registry.
+
+Когда использовать --push:
+Если вы хотите не только собрать образы, но и сразу загрузить их в реестр, этот флаг будет необходим. Kaniko будет пытаться отправить собранные образы в указанный реестр Docker.
+Пример: Если вы указали правильные учетные данные для Docker, Kaniko отправит собранные образы в ваш Docker-реестр. Это полезно для автоматического деплоя приложений в облачные или локальные серверы, а также для организации CI/CD пайплайнов.
+gcr.io/kaniko-project/executor:latest — это образ Kaniko, который будет использоваться для выполнения команды. Этот образ содержит все необходимые инструменты для сборки Docker-образов с помощью Kaniko.
+Пример использования: Если ваш файл docker-compose.yml находится в каталоге C:/Users/Olya/PycharmProjects/wrapper_builder, вы указываете его путь в этой части команды.
+build — ключевая команда для начала процесса сборки. Это указывает Kaniko, что нужно собрать Docker-образы, используя информацию из файла docker-compose.yml и других параметров, переданных в команду.
+
+#### Как работает эта команда?
+1. Поиск и сборка образов:
+   - Канико использует docker-compose.yml для поиска всех сервисов, которые должны быть собраны. Этот файл обычно содержит все необходимые настройки для сборки каждого образа (например, путь к Dockerfile, зависимости и т.д.).
+
+2. Использование указанного образа Kaniko:
+   - Kaniko будет использовать указанный образ gcr.io/kaniko-project/executor:latest для выполнения сборки.
+   Загрузка в реестр:
+
+3. После успешной сборки образов, если установлен флаг --push, Kaniko загрузит их в реестр Docker. Для этого Kaniko использует учетные данные, которые могут быть получены через Docker или Google Cloud, если это настроено.
+   - Пример рабочего процесса:
+   - Подготовка: Убедитесь, что у вас есть файл docker-compose.yml, который правильно описывает все сервисы, для которых нужно создать Docker-образы.
+
+Запуск команды: После того как вы настроили проект, выполните команду:
+
+```bash
+poetry run kaniko build --compose-file C:/Users/../wrapper_builder --kaniko-image gcr.io/kaniko-project/executor:latest --push
+```
+
+Результат:
+- Kaniko соберет образы для всех сервисов, указанных в файле docker-compose.yml.
+- После сборки образы будут загружены в Docker-реестр (например, Docker Hub или Google Container Registry).
+- Примечания: Если вам не нужно сразу загружать образы в реестр, вы можете использовать флаг --dry-run, чтобы просто протестировать сборку без публикации в реестр.
+
+Для корректной работы с реестрами Docker вам нужно удостовериться, что Docker правильно настроен для авторизации. Для этого можно использовать команду docker login.
+
+Образ Kaniko может быть обновлен, так что рекомендуется следить за последними версиями и использовать конкретную версию образа, а не всегда latest, если важно использовать стабильную версию.
+
+#### Реестр Docker:
+
+Если вы используете флаг `--push`, Kaniko будет пытаться загрузить собранные образы в реестр Docker. Для этого важно правильно настроить учетные данные Docker, чтобы вы могли публиковать образы в нужном реестре.
+
+Убедитесь, что ваш Docker настроен с правильными учетными данными:
+
+- Используйте команду docker login для аутентификации: `docker login`
+
+Введите свои учетные данные для Docker Hub или другого реестра.
+Если возникают проблемы с правами доступа (например, ошибка с docker-credential-desktop), вам нужно будет настроить Docker для правильной авторизации, как описано в разделе "Решение проблем с авторизацией".
