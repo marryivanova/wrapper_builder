@@ -1,97 +1,146 @@
-import subprocess
+import os
 import unittest
-from unittest.mock import mock_open, patch
 
-from kaniko.commands.build.cmd import run_build
-from kaniko.commands.build.kaniko.kaniko_wrapper import load_compose_file
-
-
-class TestKanikoWrapper(unittest.TestCase):
-    @patch("subprocess.run")
-    def test_run_build_success(self, mock_run):
-        mock_run.return_value = None
-
-        opts = {
-            "compose_file": "docker-compose.yml",
-            "kaniko_image": "gcr.io/kaniko-project/executor:latest",
-            "push": True,
-            "deploy": False,
-            "dry_run": False,
-        }
-        logger = unittest.mock.MagicMock()
-        run_build(opts, logger)
-
-        mock_run.assert_called_once_with(
-            [
-                "docker",
-                "run",
-                "--rm",
-                "-v",
-                "docker-compose.yml:/workspace",
-                "gcr.io/kaniko-project/executor:latest",
-                "--context",
-                "/workspace",
-                "--dockerfile",
-                "/workspace/Dockerfile",
-                "--destination",
-                "your-registry/your-image:latest",
-            ],
-            check=True,
-        )
-
-    @patch("subprocess.run")
-    def test_run_build_failure(self, mock_run):
-        mock_run.side_effect = subprocess.CalledProcessError(1, "docker run")
-
-        opts = {
-            "compose_file": "docker-compose.yml",
-            "kaniko_image": "gcr.io/kaniko-project/executor:latest",
-            "push": True,
-            "deploy": False,
-            "dry_run": False,
-        }
-        logger = unittest.mock.MagicMock()
-        run_build(opts, logger)
-
-        logger.error.assert_called_with(
-            "❌ Kaniko build failed with error: Command 'docker run' returned non-zero exit status 1."
-        )
+from kaniko.commands.build.cmd import CommandLineOptions
+from kaniko.commands.build.kaniko.kaniko_wrapper import KanikoCommandBuilder
 
 
-class TestLoadComposeFile(unittest.TestCase):
+class TestKanikoCommandBuilder(unittest.TestCase):
     def setUp(self):
-        self.compose_file_path = "path/to/docker-compose.yml"
-        self.invalid_compose_file_path = "path/to/invalid-docker-compose.yml"
-        self.valid_yaml_content = """
-        version: '3'
-        services:
-          web:
-            image: nginx
-        """
-        self.invalid_yaml_content = """
-        invalid content
-        """
+        self.kaniko_image = "gcr.io/kaniko-project/executor:latest"
+        self.builder = KanikoCommandBuilder(self.kaniko_image)
 
-    @patch(
-        "builtins.open",
-        new_callable=mock_open,
-        read_data="version: '3'\nservices:\n  web:\n    image: nginx",
-    )
-    def test_valid_file(self, mock_file):
-        result = load_compose_file(self.compose_file_path)
+    def test_build_command_with_push(self):
+        context = "path/to/context"
+        dockerfile = "Dockerfile"
+        image = "my-image:latest"
+        build_args = {"ARG1": "value1", "ARG2": "value2"}
+        push = True
 
-        self.assertIsNotNone(result)
-        self.assertIn("version", result)
-        self.assertIn("services", result)
-        mock_file.assert_called_once_with(self.compose_file_path, "r")
+        expected_command = [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            f"{os.path.abspath(context)}:/workspace",
+            "-v",
+            f"{os.path.expanduser('~')}/.docker:/kaniko/.docker:ro",
+            self.kaniko_image,
+            "--context",
+            "/workspace",
+            "--dockerfile",
+            f"/workspace/{dockerfile}",
+            "--snapshot-mode=redo",
+            "--cache=false",
+            "--cleanup",
+            "--destination",
+            image,
+        ] + ["--build-arg", "ARG1=value1", "--build-arg", "ARG2=value2"]
 
-    @patch("builtins.open", new_callable=mock_open)
-    def test_file_not_found(self, mock_file):
-        mock_file.side_effect = FileNotFoundError
-
-        with self.assertRaises(FileNotFoundError) as context:
-            load_compose_file(self.compose_file_path)
-
-        self.assertTrue(
-            f"File not found: {self.compose_file_path}" in str(context.exception)
+        command = self.builder.build_command(
+            context, dockerfile, image, build_args, push
         )
+        self.assertEqual(command, expected_command)
+
+    def test_build_command_without_push(self):
+        context = "path/to/context"
+        dockerfile = "Dockerfile"
+        image = "my-image:latest"
+        build_args = {"ARG1": "value1", "ARG2": "value2"}
+        push = False
+
+        expected_command = [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            f"{os.path.abspath(context)}:/workspace",
+            "-v",
+            f"{os.path.expanduser('~')}/.docker:/kaniko/.docker:ro",
+            self.kaniko_image,
+            "--context",
+            "/workspace",
+            "--dockerfile",
+            f"/workspace/{dockerfile}",
+            "--snapshot-mode=redo",
+            "--cache=false",
+            "--cleanup",
+            "--no-push",
+        ] + ["--build-arg", "ARG1=value1", "--build-arg", "ARG2=value2"]
+
+        command = self.builder.build_command(
+            context, dockerfile, image, build_args, push
+        )
+        self.assertEqual(command, expected_command)
+
+    def test_build_command_with_no_build_args(self):
+        context = "path/to/context"
+        dockerfile = "Dockerfile"
+        image = "my-image:latest"
+        build_args = {}
+        push = True
+
+        expected_command = [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            f"{os.path.abspath(context)}:/workspace",
+            "-v",
+            f"{os.path.expanduser('~')}/.docker:/kaniko/.docker:ro",
+            self.kaniko_image,
+            "--context",
+            "/workspace",
+            "--dockerfile",
+            f"/workspace/{dockerfile}",
+            "--snapshot-mode=redo",
+            "--cache=false",
+            "--cleanup",
+            "--destination",
+            image,
+        ]
+
+        command = self.builder.build_command(
+            context, dockerfile, image, build_args, push
+        )
+        self.assertEqual(command, expected_command)
+
+
+class TestCommandLineOptions(unittest.TestCase):
+
+    def test_default_initialization(self):
+        options = CommandLineOptions()
+        self.assertEqual(options.compose_file, "docker-compose.yml")
+        self.assertEqual(options.kaniko_image, "gcr.io/kaniko-project/executor:latest")
+        self.assertFalse(options.push)
+        self.assertFalse(options.deploy)
+        self.assertFalse(options.dry_run)
+        self.assertFalse(options.version)
+
+    def test_custom_initialization(self):
+        custom_options = {
+            "--compose-file": "custom-compose.yml",
+            "--kaniko-image": "my-kaniko-image",
+            "--push": True,
+            "--deploy": True,
+            "--dry-run": True,
+            "--version": True,
+        }
+        options = CommandLineOptions.from_dict(custom_options)
+        self.assertEqual(options.compose_file, "custom-compose.yml")
+        self.assertEqual(options.kaniko_image, "my-kaniko-image")
+        self.assertTrue(options.push)
+        self.assertTrue(options.deploy)
+        self.assertTrue(options.dry_run)
+        self.assertTrue(options.version)
+
+    def test_validation(self):
+        options = CommandLineOptions()
+        self.assertTrue(options.validate())
+
+        options.compose_file = ""
+        self.assertFalse(options.validate())
+
+        options.compose_file = "docker-compose.yml"
+        options.kaniko_image = ""
+        self.assertFalse(options.validate())

@@ -1,94 +1,92 @@
-import enum
 import logging
-from typing import Literal
+import enum
+from typing import Optional
 
-DEFAULT_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-CORE_LOGGERS = ["core_logger"]
-IMPORTANT_LOGGERS = ["important_logger"]
+from kaniko.models.model_wrapper import CommandLineOptions
+
+DEFAULT_LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 
 
 class VerbosityLevel(enum.IntEnum):
     QUIET = -1
     NORMAL = 0
     VERBOSE = 1
-    VERY_VERBOSE = 2
-    DEBUG = 3
-
+    DEBUG = 2
     MAX = DEBUG
 
     @classmethod
     def from_opts(cls, opts: dict):
-        def get_v_string(v: int) -> str:
-            return "-" + "v" * v
-
         if opts.get("--quiet"):
             return cls.QUIET
-
         verbosity_level = opts.get("-v", 0)
-        if verbosity_level > cls.MAX:
-            current_verbosity_option, max_verbosity_option = get_v_string(
-                verbosity_level
-            ), get_v_string(cls.MAX)
-            logging.error(
-                f"Invalid verbosity option. Current verbosity option: {current_verbosity_option}, max verbosity option: {max_verbosity_option}"
-            )
-            return cls.QUIET
-
-        return cls(verbosity_level)
+        return cls(min(verbosity_level, cls.MAX))
 
 
-class LogSeverity(enum.IntEnum):
-    DEBUG = logging.DEBUG
-    INFO = logging.INFO
-    WARNING = logging.WARNING
-    ERROR = logging.ERROR
-    CRITICAL = logging.CRITICAL
+class Logger:
+    _instance: Optional[logging.Logger] = None
 
     @classmethod
-    def from_verbosity(
-        cls,
-        verbosity: VerbosityLevel,
-        category: Literal["core", "important", "general"],
-    ) -> "LogSeverity":
-        if verbosity == VerbosityLevel.QUIET:
-            return cls.CRITICAL
-        if verbosity == VerbosityLevel.NORMAL:
-            return cls.INFO if category == "core" else cls.WARNING
-        if verbosity == VerbosityLevel.VERBOSE:
-            return cls.DEBUG if category == "core" else cls.INFO
-        if verbosity == VerbosityLevel.VERY_VERBOSE:
-            return cls.DEBUG if category in ["core", "important"] else cls.INFO
-        return cls.DEBUG
+    def get_logger(
+        cls, verbosity: VerbosityLevel = VerbosityLevel.NORMAL
+    ) -> logging.Logger:
+        """Retrieve the configured logger instance."""
+        if cls._instance is None:
+            cls._instance = cls.configure_logging(verbosity)
+        return cls._instance
 
+    @staticmethod
+    def configure_logging(verbosity: VerbosityLevel) -> logging.Logger:
+        """Centralized logger configuration."""
+        logger = logging.getLogger("KanikoBuilder")
+        if not logger.handlers:
+            level = (
+                logging.INFO if verbosity >= VerbosityLevel.NORMAL else logging.ERROR
+            )
+            logger.setLevel(level)
 
-def configure_logging(verbosity: VerbosityLevel) -> logging.Logger:
-    """Centralized logger configuration."""
-    logger = logging.getLogger("KanikoBuilder")
-    if not logger.handlers:
-        logger.setLevel(LogSeverity.from_verbosity(verbosity, "general"))
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(logging.Formatter(DEFAULT_LOG_FORMAT))
+            logger.addHandler(console_handler)
 
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(logging.Formatter(DEFAULT_LOG_FORMAT))
-        console_handler.setLevel(LogSeverity.from_verbosity(verbosity, "general"))
-        logger.addHandler(console_handler)
-
-    return logger
-
-
-KANIKO_LOGGER = None
-
-
-def get_logger(verbosity: VerbosityLevel = VerbosityLevel.NORMAL) -> logging.Logger:
-    """Retrieve the configured logger instance."""
-    global KANIKO_LOGGER
-    if KANIKO_LOGGER is None:
-        KANIKO_LOGGER = configure_logging(verbosity)
-    return KANIKO_LOGGER
+        return logger
 
 
 def _init_log():
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        level=logging.INFO,
-    )
-    logger = logging.getLogger("KanikoBuilder")
+    Logger.get_logger(VerbosityLevel.NORMAL)
+
+
+class LoggerModel:
+    def __init__(self, verbosity_level: int = logging.INFO):
+        self.logger = logging.getLogger("KanikoComposeWrapper")
+        self.logger.setLevel(verbosity_level)
+        if not self.logger.handlers:
+            console_handler = logging.StreamHandler()
+            formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+            console_handler.setFormatter(formatter)
+            self.logger.addHandler(console_handler)
+
+    def log_info(self, message: str) -> None:
+        """Log information messages."""
+        self.logger.info(message)
+
+    def log_error(self, message: str) -> None:
+        """Log error messages."""
+        self.logger.error(message)
+
+    def log_warning(self, message: str) -> None:
+        """Log warning messages."""
+        self.logger.warning(message)
+
+    def log_build_details(self, opts: CommandLineOptions) -> None:
+        self.log_info(f"📁 Using docker-compose file: {opts.compose_file}")
+        self.log_info(f"🛠️ Kaniko executor image: {opts.kaniko_image}")
+        if opts.push:
+            self.log_info("📤 Images will be pushed to the registry after build.")
+        elif opts.deploy:
+            self.log_info("🌐 Images will be deployed to the registry after build.")
+        elif opts.dry_run:
+            self.log_info("🔍 Running in dry-run mode. No images will be pushed.")
+        else:
+            self.log_warning(
+                "⚠️ No deployment action specified: images will neither be pushed nor deployed."
+            )

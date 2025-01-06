@@ -1,5 +1,5 @@
 """
-EpicMorg: Kaniko-Compose Wrapper
+Kaniko-Compose Wrapper
 
 Description:
     This script is designed to automate Docker image building using Kaniko and docker-compose.
@@ -9,7 +9,6 @@ Usage:
     kaniko [options...] <command> [<args>...]
     kaniko (-h | --help | --version)
 
-
 Global Options:
     -e, --allow-dotenv <path>       Load environment variables from the specified file. [default: .env]
     -h, --help                      Show usage help.
@@ -17,7 +16,7 @@ Global Options:
     --version                       Show script version.
 
 Commands:
-    build                       Run image building with Kaniko.
+    build                           Run image building with Kaniko.
 
 Examples:
     1. Build and push images with default settings:
@@ -31,15 +30,18 @@ Examples:
 """
 
 import json
-import logging
 import types
 import typing as t
+import logging
 
 import docopt
 import dotenv
 
 from kaniko import commands, helpers, settings
-from kaniko.helpers.logger_file import VerbosityLevel, configure_logging
+from kaniko.helpers.logger_file import (
+    VerbosityLevel,
+    Logger,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +50,7 @@ settings.PACKAGE_VERSION = PACKAGE_VERSION = helpers
 
 def run_command(opts: t.Dict[str, t.Any]):
     command_name = opts["<command>"]
+
     match command_name:
         case "build":
             cmd_module: types.ModuleType = commands.build
@@ -68,10 +71,8 @@ def run_command(opts: t.Dict[str, t.Any]):
 
 
 def main(opts: t.Dict[str, t.Any]):
-    helpers.logger_file.configure_logging(
-        helpers.logger_file.VerbosityLevel.from_opts(opts)
-    )
-    helpers.logger_file.configure_logging(verbosity=VerbosityLevel.NORMAL)
+    verbosity = VerbosityLevel.from_opts(opts)
+    logger = Logger.get_logger(verbosity)
 
     logger.debug("Run app with options: %s", json.dumps(opts))
 

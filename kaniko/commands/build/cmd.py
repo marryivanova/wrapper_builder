@@ -1,5 +1,5 @@
 """
-EpicMorg: Kaniko-Compose Wrapper
+Kaniko-Compose Wrapper
 
 Usage:
     kaniko [--compose-file=<file>] build [--kaniko-image=<image>] [--push | --deploy | --dry-run] [--version] [--help]
@@ -13,119 +13,111 @@ Options:
   -h --help                       Show this help message and exit.
 """
 
+import argparse
 import logging
 import subprocess
 import typing as t
-from kaniko import helpers
-from kaniko.helpers.logger_file import VerbosityLevel
+
+from kaniko.commands.build.kaniko.kaniko_wrapper import KanikoCommandBuilder
+from kaniko.helpers.logger_file import LoggerModel
 from kaniko.settings import SCRIPT_VERSION
 
 
-def parse_options(opts: t.Dict[str, t.Any]) -> t.Dict[str, t.Any]:
-    """Parse and validate options from the command line."""
-    return {
-        "compose_file": opts.get("--compose-file", "docker-compose.yml"),
-        "kaniko_image": opts.get(
-            "--kaniko-image", "gcr.io/kaniko-project/executor:latest"
-        ),
-        "push": opts.get("--push", False),
-        "deploy": opts.get("--deploy", False),
-        "dry_run": opts.get("--dry-run", False),
-        "version": opts.get("--version", False),
-    }
+class CommandLineOptions:
+    def __init__(
+        self,
+        compose_file: str = "docker-compose.yml",
+        kaniko_image: str = "gcr.io/kaniko-project/executor:latest",
+        push: bool = False,
+        deploy: bool = False,
+        dry_run: bool = False,
+        version: bool = False,
+    ):
+        self.compose_file = compose_file
+        self.kaniko_image = kaniko_image
+        self.push = push
+        self.deploy = deploy
+        self.dry_run = dry_run
+        self.version = version
 
-
-def validate_options(opts: t.Dict[str, t.Any], logger: logging.Logger) -> bool:
-    """Validate required options and log errors if needed."""
-    if not opts["compose_file"]:
-        logger.error(
-            "❌ Docker Compose file path is missing. "
-            "Please provide a valid file with the --compose-file option."
-        )
-        return False
-
-    if not opts["kaniko_image"]:
-        logger.error(
-            "❌ Kaniko executor image is missing. "
-            "Please provide a valid image with the --kaniko-image option."
-        )
-        return False
-
-    return True
-
-
-def log_build_details(opts: t.Dict[str, t.Any], logger: logging.Logger) -> None:
-    """Log detailed build settings."""
-    logger.info(f"📁 Using docker-compose file: {opts['compose_file']}")
-    logger.info(f"🛠️ Kaniko executor image: {opts['kaniko_image']}")
-    if opts["push"]:
-        logger.info("📤 Images will be pushed to the registry after build.")
-    elif opts["deploy"]:
-        logger.info("🌐 Images will be deployed to the registry after build.")
-    elif opts["dry_run"]:
-        logger.info("🔍 Running in dry-run mode. No images will be pushed.")
-    else:
-        logger.warning(
-            "⚠️ No deployment action specified: images will neither be pushed nor deployed."
+    @classmethod
+    def from_dict(cls, opts: t.Dict[str, t.Any]) -> "CommandLineOptions":
+        return cls(
+            compose_file=opts.get("--compose-file", "docker-compose.yml"),
+            kaniko_image=opts.get(
+                "--kaniko-image", "gcr.io/kaniko-project/executor:latest"
+            ),
+            push=opts.get("--push", False),
+            deploy=opts.get("--deploy", False),
+            dry_run=opts.get("--dry-run", False),
+            version=opts.get("--version", False),
         )
 
+    def validate(self, logger: t.Optional[logging.Logger] = None) -> bool:
+        if not self.compose_file:
+            if logger:
+                logger.error("❌ Docker Compose file path is missing.")
+            return False
+        if not self.kaniko_image:
+            if logger:
+                logger.error("❌ Kaniko image is missing.")
+            return False
+        return True
 
-def run_build(opts: t.Dict[str, t.Any], logger: logging.Logger) -> None:
-    """Simulate the Kaniko build process and trigger it using subprocess."""
-    logger.debug(
-        "\n⚙️ Preparing Kaniko build with options...\n"
-        f"compose_file: {opts['compose_file']}, \n"
-        f"kaniko_image: {opts['kaniko_image']}, \n"
-        f"push: {opts['push']}, \n"
-        f"deploy: {opts['deploy']}, \n"
-        f"dry_run: {opts['dry_run']}.\n"
-    )
 
-    command = [
-        "docker",
-        "run",
-        "--rm",
-        "-v",
-        f"{opts['compose_file']}:/workspace",
-        opts["kaniko_image"],
-        "--context",
-        "/workspace",
-        "--dockerfile",
-        "/workspace/Dockerfile",
-    ]
+class KanikoBuildCommand:
+    def __init__(self, opts: CommandLineOptions):
+        self.opts = opts
+        self.command_builder = KanikoCommandBuilder(self.opts.kaniko_image)
 
-    if opts["push"]:
-        command.extend(["--destination", "your-registry/your-image:latest"])
-    elif opts["deploy"]:
-        command.extend(["--destination", "your-registry/your-image:latest", "--deploy"])
+    def build_command(self) -> t.List[str]:
+        return self.command_builder.build_command(
+            context=self.opts.compose_file,
+            dockerfile="Dockerfile",
+            image=self.opts.kaniko_image,
+            build_args={},
+            push=self.opts.push,
+        )
 
-    if opts["dry_run"]:
-        logger.info("🔍 Running in dry-run mode. No images will be pushed.")
+    def run_build(self, logger: LoggerModel) -> None:
+        if self.opts.dry_run:
+            logger.log_info("🔍 Running in dry-run mode. No images will be pushed.")
+            return
+
+        try:
+            logger.log_info("⚙️ Kaniko build process is now running...")
+            command = self.build_command()
+            subprocess.run(command, check=True)
+            logger.log_info("✅ Kaniko build process completed successfully!")
+        except subprocess.CalledProcessError as e:
+            logger.log_error(f"❌ Kaniko build failed with error: {e}")
+        except Exception as e:
+            logger.log_error(f"❌ An unexpected error occurred: {e}")
+
+
+class VersionModel:
+    def __init__(self, version: str):
+        self.version = version
+
+    def display_version(self, logger: LoggerModel) -> None:
+        logger.log_info(f"📄 Kaniko Builder Script Version: {self.version}")
+
+
+def run(opts: t.Dict[str, t.Any], script_version=SCRIPT_VERSION) -> None:
+    logger = LoggerModel(logging.INFO)
+    options = CommandLineOptions.from_dict(opts)
+
+    if options.version:
+        version_model = VersionModel(script_version)
+        version_model.display_version(logger)
         return
 
-    try:
-        logger.info("⚙️ Kaniko build process is now running...")
-        subprocess.run(command, check=True)
-        logger.info("✅ Kaniko build process completed successfully!")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"❌ Kaniko build failed with error: {e}")
+    logger.log_info("🚀 Starting Kaniko build process...")
+
+    if not options.validate(logger):
         return
 
+    logger.log_build_details(options)
 
-def run(opts: t.Dict[str, t.Any]) -> None:
-    helpers.logger_file.configure_logging(verbosity=VerbosityLevel.NORMAL)
-    logger = logging.getLogger("KanikoComposeWrapper")
-
-    options = parse_options(opts)
-
-    if options["version"]:
-        logger.info(f"📄 Kaniko Builder Version: {SCRIPT_VERSION}")
-        return
-
-    logger.info("🚀 Starting Kaniko build process...")
-
-    if not validate_options(options, logger):
-        return
-
-    log_build_details(options, logger)
-    run_build(options, logger)
+    build_command = KanikoBuildCommand(options)
+    build_command.run_build(logger)

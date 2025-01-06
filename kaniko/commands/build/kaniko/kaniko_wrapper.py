@@ -14,22 +14,6 @@ class DockerComposeLoader:
         self.compose_file = compose_file
 
     def load(self) -> t.Dict[str, t.Dict]:
-        """
-        Load and validate the Docker Compose file.
-
-        This method attempts to load the specified Docker Compose file and extract
-        the 'services' section. If the file doesn't exist, it raises a FileNotFoundError.
-
-        Args:
-            self: The instance of the DockerComposeLoader class.
-
-        Returns:
-            t.Dict[str, t.Dict]: A dictionary containing the 'services' section of the
-            Docker Compose file. If no 'services' section is found, it returns an empty dictionary.
-
-        Raises:
-            FileNotFoundError: If the specified Docker Compose file does not exist.
-        """
         if not os.path.exists(self.compose_file):
             logger.error(f"Compose file not found: {self.compose_file}")
             raise FileNotFoundError(f"Compose file not found: {self.compose_file}")
@@ -52,22 +36,6 @@ class KanikoCommandBuilder:
         build_args: t.Dict[str, str],
         push: bool,
     ) -> t.List[str]:
-        """
-        Build a Kaniko command for building and optionally pushing a Docker image.
-
-        This method constructs a command list that can be used to run Kaniko
-        for building a Docker image based on the provided parameters.
-
-        Args:
-            context (str): The build context path.
-            dockerfile (str): The path to the Dockerfile relative to the context.
-            image (str): The name and tag of the image to be built.
-            build_args (t.Dict[str, str]): A dictionary of build arguments to be passed to the build process.
-            push (bool): Whether to push the built image to a registry.
-
-        Returns:
-            t.List[str]: A list of strings representing the Kaniko command to be executed.
-        """
         command = [
             "docker",
             "run",
@@ -99,14 +67,6 @@ class KanikoCommandBuilder:
 class KanikoExecutor:
 
     def __init__(self, kaniko_image: str, push: bool, dry_run: bool):
-        """
-        Initialize the KanikoExecutor.
-
-        Args:
-            kaniko_image (str): The Kaniko executor image to use.
-            push (bool): Whether to push the built image to a registry.
-            dry_run (bool): If True, only log the command without executing it.
-        """
         self.kaniko_image = kaniko_image
         self.push = push
         self.dry_run = dry_run
@@ -119,25 +79,6 @@ class KanikoExecutor:
         image: str,
         build_args: t.Dict[str, str],
     ):
-        """
-        Execute a Kaniko build for a given service.
-
-        This method builds a Docker image using Kaniko based on the provided parameters.
-        If dry_run is True, it only logs the command without executing it.
-
-        Args:
-            service_name (str): The name of the service being built.
-            context (str): The build context path.
-            dockerfile (str): The path to the Dockerfile relative to the context.
-            image (str): The name and tag of the image to be built.
-            build_args (t.Dict[str, str]): A dictionary of build arguments to be passed to the build process.
-
-        Raises:
-            subprocess.CalledProcessError: If the Kaniko build process fails.
-
-        Returns:
-            None
-        """
         command_builder = KanikoCommandBuilder(self.kaniko_image)
         command = command_builder.build_command(
             service_name, context, dockerfile, image, build_args, self.push
@@ -151,6 +92,7 @@ class KanikoExecutor:
 
         try:
             logger.info(f"Building service: {service_name}")
+            logger.info(f"Executing command: {' '.join(command)}")
             subprocess.run(command, check=True)
             logger.info(f"Service {service_name} built successfully.")
         except subprocess.CalledProcessError as e:
@@ -159,38 +101,13 @@ class KanikoExecutor:
 
 
 class KanikoBuilder:
-    """
-    A class for building Docker images using Kaniko based on a Docker Compose file.
-    """
-
     def __init__(self, compose_file: str, kaniko_image: str, push: bool, dry_run: bool):
-        """
-        Initialize the KanikoBuilder.
-
-        Args:
-            compose_file (str): Path to the Docker Compose file.
-            kaniko_image (str): The Kaniko executor image to use for building.
-            push (bool): Whether to push the built images to a registry.
-            dry_run (bool): If True, only log the commands without executing them.
-        """
         self.compose_file = compose_file
         self.kaniko_image = kaniko_image
         self.push = push
         self.dry_run = dry_run
 
     def execute(self):
-        """
-        Execute the Kaniko build process for all services defined in the Docker Compose file.
-
-        This method loads the services from the Docker Compose file, creates a KanikoExecutor,
-        and uses a ThreadPoolExecutor to build all services concurrently.
-
-        Raises:
-            Exception: If any error occurs during the build process for any service.
-
-        Returns:
-            None
-        """
         loader = DockerComposeLoader(self.compose_file)
         services = loader.load()
         executor = KanikoExecutor(self.kaniko_image, self.push, self.dry_run)

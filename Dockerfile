@@ -1,10 +1,14 @@
-# for test
-FROM python:3.8-slim
+# Используем базовый образ
+FROM alpine:latest
 
+# Устанавливаем версию Python
+RUN apk add --no-cache python3 py3-pip
+
+# Копируем файл в контейнер
+COPY . /app
+
+# Устанавливаем рабочую директорию
 WORKDIR /app
 
-COPY . .
-
-RUN pip install -r requirements.txt
-
-CMD ["python", "app.py"]
+# Определяем команду по умолчанию
+CMD ["python3", "-c", "print('Hello from Docker!')"]

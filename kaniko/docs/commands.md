@@ -33,7 +33,7 @@ poetry run kaniko build --version
 Если вам нужна помощь по использованию скрипта, выполните команду:
 
 ```bash
-poetry run kaniko build -h
+poetry run kaniko build --help
 ```
 - Эта команда выведет справочную информацию о доступных флагах и параметрах, а также краткое описание каждой команды.
 
@@ -42,7 +42,7 @@ poetry run kaniko build -h
 Для сборки Docker-образов и их последующего развертывания, используйте команду:
 
 ```bash
-poetry run kaniko build --compose-file C:/Users/../wrapper_builder --kaniko-image gcr.io/kaniko-project/executor:latest --deploy
+poetry run kaniko build --compose-file ./Users/../wrapper_builder --kaniko-image gcr.io/kaniko-project/executor:latest --deploy
 ```
 Пояснение:
 - compose-file: Путь к вашему файлу docker-compose.yml, который описывает сервисы и их параметры.
@@ -51,7 +51,13 @@ poetry run kaniko build --compose-file C:/Users/../wrapper_builder --kaniko-imag
 
 - Использование флага `--deploy`: Если вы хотите не просто собрать образы, а сразу развернуть их после сборки, используйте флаг `--deploy`. Это предполагает, что после сборки образы будут сразу развернуты в вашем облаке или на сервере. Убедитесь, что ваша среда настроена для развертывания (например, настроены правильные аутентификационные данные для облачных сервисов).
 
-4. Остановка и очистка после сборки.
+4. Проверка базового использования с файлами Docker Compose:
+
+```bash
+poetry run kaniko build --compose-file /path/to/your/docker-compose.yml
+```
+
+5. Остановка и очистка после сборки.
 После завершения сборки и загрузки, чтобы остановить все контейнеры и освободить ресурсы, используйте команду:
 
 ```bash
@@ -59,14 +65,14 @@ docker-compose down --rmi all
 ```
 Эта команда остановит контейнеры, удалит их и очистит ресурсы, связанные с ними.
 
-5. Тестирование сборки (без загрузки)
+6. Тестирование сборки (без загрузки)
 
 Если вы хотите только протестировать сборку без загрузки образов в реестр, используйте флаг --dry-run. Это позволит собрать образы, но не пытаться загрузить их в реестр.
 
 Пример команды для тестового запуска:
 
 ```bash
-poetry run kaniko build --compose-file C:/Users/./wrapper_builder --kaniko-image gcr.io/kaniko-project/executor:latest --dry-run
+poetry run kaniko build --compose-file ./Users/./wrapper_builder --kaniko-image gcr.io/kaniko-project/executor:latest --dry-run
 ```
 
 Пояснение:
@@ -77,7 +83,7 @@ poetry run kaniko build --compose-file C:/Users/./wrapper_builder --kaniko-image
 Kaniko будет использовать образ, указанный в параметре `--kaniko-image`. По умолчанию используется `gcr.io/kaniko-project/executor:latest`, но вы можете изменить это на другой образ Kaniko.
 Docker необходим для работы с реестрами Docker и для выполнения команд контейнеризации. Убедитесь, что Docker настроен правильно для вашего окружения.
 
-6. После успешной сборки образов они должны быть загружены (или "пушнуты") в реестр Docker:
+7. После успешной сборки образов они должны быть загружены (или "пушнуты") в реестр Docker:
 
 ```bash
 poetry run kaniko build --compose-file C:/Users/../wrapper_builder --kaniko-image gcr.io/kaniko-project/executor:latest --push
@@ -134,3 +140,9 @@ poetry run kaniko build --compose-file C:/Users/../wrapper_builder --kaniko-imag
 
 Введите свои учетные данные для Docker Hub или другого реестра.
 Если возникают проблемы с правами доступа (например, ошибка с docker-credential-desktop), вам нужно будет настроить Docker для правильной авторизации, как описано в разделе "Решение проблем с авторизацией".
+
+####  Docker helper по командам:
+
+1. Залили образ - проверить, что образ залит: `docker images`
+2. Обоаз нужно удалить -> по имени: `docker rmi -f gcr.io/kaniko-project/executor:latest`
+3. Забыл команды: `docker run --help`
